@@ -3,7 +3,8 @@ module.exports = (env) ->
   Promise = env.require 'bluebird'
   assert = env.require 'cassert'
   _ = env.require 'lodash'
-  MaxCube = require 'max-control'
+  MaxCubeConnection = require 'max-control'
+  Promise.promisifyAll(MaxCubeConnection.prototype)
   M = env.matcher
   
   class MaxThermostat extends env.plugins.Plugin
@@ -14,8 +15,7 @@ module.exports = (env) ->
 
       # Promise that is resolved when the connection is established
       @afterConnect = new Promise( (resolve, reject) =>
-        env.logger.debug "Remember to fill config with dummy values to get debug output!"
-        @mc = new MaxCube(plugin.config.host, plugin.config.port)
+        @mc = new MaxCubeConnection(@config.host, @config.port)
         @mc.once("connected", resolve)
         @mc.client.once('error', reject)
         return
@@ -25,22 +25,42 @@ module.exports = (env) ->
         return
       )
 
+      @mc.on('response', (res) =>
+        env.logger.debug "Response: ", res
+      )
+
+      @mc.on("update", (data) =>
+        env.logger.debug "got update", data
+      )
+
       deviceConfigDef = require("./device-config-schema")
       @framework.deviceManager.registerDeviceClass("MaxThermostatDevice", {
         configDef: deviceConfigDef.MaxThermostatDevice,
         createCallback: (config) -> new MaxThermostatDevice(config)
       })
 
+      @framework.deviceManager.registerDeviceClass("MaxContactSensor", {
+        configDef: deviceConfigDef.MaxContactSensor,
+        createCallback: (config) -> new MaxContactSensor(config)
+      })
+
+      @framework.deviceManager.registerDeviceClass("MaxCube", {
+        configDef: deviceConfigDef.MaxCube,
+        createCallback: (config, lastState) -> new MaxCube(config, lastState)
+      })
       # wait till all plugins are loaded
       @framework.on "after init", =>
         # Check if the mobile-frontent was loaded and get a instance
         mobileFrontend = @framework.pluginManager.getPlugin 'mobile-frontend'
         if mobileFrontend?
+          mobileFrontend.registerAssetFile 'js', "pimatic-max-thermostat/app/jqm-spinbox.js"
           mobileFrontend.registerAssetFile 'js', "pimatic-max-thermostat/app/js.coffee"
           mobileFrontend.registerAssetFile 'css', "pimatic-max-thermostat/app/css/css.css"
           mobileFrontend.registerAssetFile 'html', "pimatic-max-thermostat/app/template.html"
         else
-          env.logger.warn "MaxThermostat could not find the mobile-frontend. No gui will be available"
+          env.logger.warn(
+            "MaxThermostat could not find the mobile-frontend. No gui will be available"
+          )
 
 
   plugin = new MaxThermostat
@@ -78,8 +98,6 @@ module.exports = (env) ->
       @_settemperature = @config.actTemp
 
       plugin.mc.on("update", (data) =>
-        env.logger.debug "got update"
-        env.logger.debug data
         data = data[@config.deviceNo]
         if data?
           @config.actTemp = data.setpoint
@@ -118,11 +136,51 @@ module.exports = (env) ->
       if @settemperature is temperature then return
       return plugin.afterConnect.then( =>
         env.logger.debug "temp is going to change"
-        plugin.mc.setTemperature @config.deviceNo, @config.mode, temperature  
-        @_setTemp(temperature)
-        return temperature
+        return plugin.mc.setTemperatureAsync(@config.deviceNo, @config.mode, temperature)
       )
 
+  class MaxContactSensor extends env.devices.ContactSensor
+
+    constructor: (@config) ->
+      @id = @config.id
+      @name = @config.name
+
+      plugin.mc.on("update", (data) =>
+        data = data[@config.deviceNo]
+        if data?
+          @_setContact(data.state is 'closed')
+        return
+      )
+      super()
+
+  class MaxCube extends env.devices.Sensor
+
+    attributes:
+      dutycycle:
+        description: "Percentage of max rf limit reached"
+        type: "number"
+        unit: "%"
+      memoryslots:
+        description: "Available memory slots for commands"
+        type: "number"
+
+    _dutycycle: 0
+    _memoryslots: 50
+
+    constructor: (@config, lastState) ->
+      @id = @config.id
+      @name = @config.name
+      @_dutycycle = lastState?.dutycycle?.value or 0
+      @_memoryslots = lastState?.memoryslots?.value or 0
+
+      plugin.mc.on("status", (info) =>
+        @emit 'dutycycle', info.dutyCycle
+        @emit 'memoryslots', info.memorySlots
+      )
+      super()
+
+    getDutycycle: -> Promise.resolve(@_dutycycle)
+    getMemoryslots: -> Promise.resolve(@_memoryslots)
 
   class MaxModeActionProvider extends env.actions.ActionProvider
 
@@ -166,7 +224,8 @@ module.exports = (env) ->
         if valueTokens.length is 1 and not isNaN(valueTokens[0])
           value = valueTokens[0] 
           assert(not isNaN(value))
-          modes = ["eco", "boost", "auto", "manu", "comfy"] # TODO: Implement eco & comfy in changeModeTo method!
+          modes = ["eco", "boost", "auto", "manu", "comfy"] 
+          # TODO: Implement eco & comfy in changeModeTo method!
           if modes.indexOf(value) < -1
             context?.addError("Allowed modes: eco,boost,auto,manu,comfy")
             return
@@ -289,7 +348,9 @@ module.exports = (env) ->
         if simulate
           __("would set temp of %s to %s%%", @device.name, value)
         else
-          @device.changeTemperatureTo(value).then( => __("set temp of %s to %s%%", @device.name, value) )
+          @device.changeTemperatureTo(value).then( => 
+            __("set temp of %s to %s%%", @device.name, value) 
+          )
       )
 
     # ### executeAction()

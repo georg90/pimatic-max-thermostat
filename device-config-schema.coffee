@@ -35,6 +35,32 @@ module.exports = {
       battery: 
         description: "The battery status"
         type: "string"
-        default: "ok" 
+        default: "ok"
+      guiShowModeControl: 
+        description: "Show the mode buttons in the gui"
+        type: "boolean"
+        default: true
+      guiShowPresetControl:
+        description: "Show the preset temperatures in the gui"
+        type: "boolean"
+        default: true
+      guiShowTemperatueInput:
+        description: "Show the temperature input spinbox in the gui"
+        type: "boolean"
+        default: true        
+  }
+  MaxContactSensor: {
+    title: "MaxContactSensor config options"
+    type: "object"
+    properties:
+      deviceNo:
+        description: "The Device RF adress"
+        type: "string"
+        default: ""
+  }
+  MaxCube: {
+    title: "MaxCube config options"
+    type: "object"
+    properties: {}
   }
 }
