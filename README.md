@@ -81,5 +81,5 @@ For contactSensors add this config:
 
 Screenshot
 -------------
-[![Screenshot 1][screen1_thumb]](https://cloud.githubusercontent.com/assets/6489464/4346733/d30e7710-4110-11e4-87a7-934770234a84.PNG) 
-[screen1_thumb]: https://cloud.githubusercontent.com/assets/6489464/4346733/d30e7710-4110-11e4-87a7-934770234a84.PNG
+[![Screenshot 1][screen1_thumb]](https://cloud.githubusercontent.com/assets/5249312/4874643/a3d79bee-6266-11e4-9667-07bbce76a013.png) 
+[screen1_thumb]: https://cloud.githubusercontent.com/assets/5249312/4874643/a3d79bee-6266-11e4-9667-07bbce76a013.png
